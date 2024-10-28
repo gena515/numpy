@@ -24,6 +24,12 @@ except NameError:
     RecursionError = RuntimeError  # python < 3.5
 
 
+def _assert_equal_hash(v1, v2):
+    assert v1 == v2
+    assert hash(v1) == hash(v2)
+    assert v2 in {v1}
+
+
 class TestDateTime:
 
     def test_string(self):
@@ -2551,6 +2557,80 @@ class TestDateTime:
         # week reprs are not distinguishable.
         limit_via_str = np.datetime64(str(limit), time_unit)
         assert limit_via_str == limit
+
+    def test_datetime_hash(self):
+        nat1 = np.datetime64()
+        nat2 = np.datetime64()
+        assert nat1 is not nat2
+        assert nat1 != nat2
+        assert hash(nat1) != hash(nat2)
+
+        dt = np.datetime64(2348, 'W')  # 2015-01-01
+        for unit in ('Y', 'M', 'W', 'D', 'h', 'm', 's', 'ms', 'us'):
+            dt2 = np.datetime64(dt, unit)
+            _assert_equal_hash(dt, dt2)
+
+            dt3 = np.datetime64(int(dt2.astype(int)) + 1, unit)
+            assert hash(dt) != hash(dt3)  # doesn't collide
+
+        for unit in ('h', 'm', 's', 'ms', 'us'):
+            dt2 = np.datetime64(dt, unit)
+            pydt = dt2.astype(datetime.datetime)
+            assert isinstance(pydt, datetime.datetime)
+            _assert_equal_hash(pydt, dt2)
+
+        dt = np.datetime64(-102894, 'W')  # -002-01-01
+        for unit in ('Y', 'M', 'W', 'D', 'h', 'm', 's', 'ms', 'us'):
+            dt2 = np.datetime64(dt, unit)
+            _assert_equal_hash(dt, dt2)
+
+        dt = np.datetime64(3, 'ms')
+        for unit in ('ms', 'us', 'ns', 'ps', 'fs', 'as'):
+            dt2 = np.datetime64(dt, unit)
+            _assert_equal_hash(dt, dt2)
+
+            dt3 = np.datetime64(int(dt2.astype(int)) + 1, unit)
+            assert hash(dt) != hash(dt3)  # doesn't collide
+
+        for wk in range(500000, 500010):  # 11552-09-04
+            dt = np.datetime64(wk, 'W')
+            for unit in ('W', 'D', 'h', 'm', 's', 'ms', 'us'):
+                dt2 = np.datetime64(dt, unit)
+                _assert_equal_hash(dt, dt2)
+
+    def test_timedelta_hash(self):
+        assert_raises(ValueError, hash, np.timedelta64(123))  # generic
+
+        td = np.timedelta64(45, 'Y')
+        for unit in ('Y', 'M'):
+            td2 = np.timedelta64(td, unit)
+            _assert_equal_hash(td, td2)
+
+        td = np.timedelta64(10, 'W')
+        for unit in ('W', 'D', 'h', 'm', 's', 'ms', 'us'):
+            td2 = np.timedelta64(td, unit)
+            _assert_equal_hash(td, td2)
+
+            td3 = np.timedelta64(int(td2.astype(int)) + 1, unit)
+            assert hash(td) != hash(td3)  # doesn't collide
+
+            pytd = td2.astype(datetime.timedelta)
+            assert isinstance(pytd, datetime.timedelta)
+            _assert_equal_hash(pytd, td2)
+
+        td = np.timedelta64(3, 'ms')
+        for unit in ('ms', 'us', 'ns', 'ps', 'fs', 'as'):
+            td2 = np.timedelta64(td, unit)
+            _assert_equal_hash(td, td2)
+
+            td3 = np.timedelta64(int(td2.astype(int)) + 1, unit)
+            assert hash(td) != hash(td3)  # doesn't collide
+
+        for wk in range(500000, 500010):
+            td = np.timedelta64(wk, 'W')
+            for unit in ('W', 'D', 'h', 'm', 's', 'ms', 'us'):
+                td2 = np.timedelta64(td, unit)
+                _assert_equal_hash(td, td2)
 
 
 class TestDateTimeData:

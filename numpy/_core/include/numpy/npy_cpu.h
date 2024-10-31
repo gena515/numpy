@@ -109,7 +109,7 @@
     #elif __riscv_xlen == 32
 	#define NPY_CPU_RISCV32
     #endif
-#elif defined(__loongarch__)
+#elif defined(__loongarch__) || defined(__loongarch64__)
     #define NPY_CPU_LOONGARCH
 #elif defined(__EMSCRIPTEN__)
     /* __EMSCRIPTEN__ is defined by emscripten: an LLVM-to-Web compiler */

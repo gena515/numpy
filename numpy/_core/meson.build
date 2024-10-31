@@ -951,7 +951,6 @@ foreach gen_mtargets : [
     'src/umath/loops_trigonometric.dispatch.cpp',
     [
       AVX512_SKX, [AVX2, FMA3],
-      VSX4, VSX3, VSX2,
       NEON_VFPV4,
     ]
   ],

@@ -1351,6 +1351,34 @@ class TestMaskedArrayArithmetic:
             assert masked_array([-cmax, 0], mask=[0, 1]).max() == -cmax
             assert masked_array([cmax, 0], mask=[0, 1]).min() == cmax
 
+    @pytest.mark.parametrize("dtype", [np.int8, np.uint8, np.float16,
+                                       np.complex64])
+    def test_minmax_with_axis_input(self, dtype):
+        # Test all kinds of number types (min/max),
+        # due to maybe some error raise.
+        # See issue 27580
+        # https://github.com/numpy/numpy/issues/27580
+
+        # Test data and respected result
+        # axis = 0 with output with mask
+        # axis = 1 with output with no mask
+        test = masked_array(np.array([[1, 0, 5], [2, 0, 6]]),
+                            mask=[[0, 1, 0], [1, 1, 0]]).astype(dtype)
+        test_0_min = masked_array(np.array([1, 0, 5]),
+                                  mask=[0, 1, 0]).astype(dtype)
+        test_0_max = masked_array(np.array([1, 0, 6]),
+                                  mask=[0, 1, 0]).astype(dtype)
+        test_1_min = masked_array(np.array([1, 6]),
+                                  mask=[0, 0]).astype(dtype)
+        test_1_max = masked_array(np.array([5, 6]),
+                                  mask=[0, 0]).astype(dtype)
+
+        # Test
+        assert_equal(test.min(axis=0), test_0_min)
+        assert_equal(test.max(axis=0), test_0_max)
+        assert_equal(test.min(axis=1), test_1_min)
+        assert_equal(test.max(axis=1), test_1_max)
+
     def test_addsumprod(self):
         # Tests add, sum, product.
         (x, y, a10, m1, m2, xm, ym, z, zm, xf) = self.d

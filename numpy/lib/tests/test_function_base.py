@@ -2094,6 +2094,25 @@ class TestDigitize:
         assert_equal(np.digitize(x, [x + 1, x - 1]), 1)
 
 
+@pytest.fixture
+def int_array():
+    seed = 1337
+    randState = np.random.RandomState(seed=seed)
+    return randState.randint(-32, 32, 1 << 20).reshape(16, -1, 16)
+
+@pytest.fixture
+def float_array():
+    seed = 1337
+    randState = np.random.RandomState(seed=seed)
+    return randState.uniform(-1e9, 1e9, 1 << 20).reshape(16, -1, 16)
+
+@pytest.fixture
+def big_int_array():
+    seed = 1337
+    randState = np.random.RandomState(seed=seed)
+    rand_arr = randState.randint(-32, 32, 1 << 20).reshape(16, -1, 16)
+    return rand_arr.astype(np.object_) + (1 << 100)
+
 class TestUnwrap:
 
     def test_simple(self):
@@ -2119,6 +2138,118 @@ class TestUnwrap:
         sm_discont = unwrap(wrap_uneven, period=250, discont=140)
         assert_array_equal(sm_discont, [0, 75, 150, 225, 300, 430])
         assert sm_discont.dtype == wrap_uneven.dtype
+
+    @pytest.mark.parametrize("int_array, period, discont, axis", (
+        ("int_array", 4, 3, 1),
+        ("int_array", 4, 3, 0),
+        ("int_array", 4, None, 1),
+        ("int_array", -4, 3, 1),
+    ), indirect=("int_array", ))
+    def test_unwrap_exact(self, int_array, *, period, discont, axis):
+        out_arr = np.unwrap(
+            int_array, period=period, discont=discont, axis=axis
+        )
+        half_period = np.divmod(period, 2)[0]
+        if discont is None:
+            discont = half_period
+        implies = lambda cond1, cond2: (~cond1) | cond2
+        iff = lambda cond1, cond2: \
+            implies(cond1, cond2) & implies(cond2, cond1)
+        slices = [slice(None, None)] * int_array.ndim
+        slices[axis] = slice(0, 1)
+        slices = tuple(slices)
+
+        assert_array_equal(int_array[slices], out_arr[slices])
+        assert_(np.all(np.mod(int_array - out_arr, period) == 0))
+        assert_(np.all(implies(
+            np.abs(np.diff(int_array, axis=axis)) < discont,
+            np.diff(out_arr, axis=axis) == np.diff(int_array, axis=axis)
+        )))
+        assert_(np.all(implies(
+            np.abs(np.diff(int_array, axis=axis)) >= discont,
+            np.abs(np.diff(out_arr, axis=axis)) <= abs(half_period)
+        )))
+        relevant_inds = \
+            (np.mod(np.diff(int_array, axis=axis), period) == half_period) & \
+            (np.abs(np.diff(int_array, axis=axis)) >= discont)
+        if period > 0:
+            assert_(np.all(iff(
+                np.diff(out_arr, axis=axis) > 0,
+                np.diff(int_array, axis=axis) > 0
+            ), where=relevant_inds))
+        else:
+            assert_(np.all(iff(
+                np.diff(out_arr, axis=axis) > 0,
+                np.diff(int_array, axis=axis) < 0
+            ), where=relevant_inds))
+
+    @pytest.mark.xfail(
+        reason="gh-27609: np.lib.unwrap accumulates rounding errors")
+    @pytest.mark.parametrize("float_array, period, discont, axis", (
+        ("float_array", 2 * np.pi, 1e7, 1),
+        ("float_array", 2 * np.pi, None, 1),
+        ("float_array", -2 * np.pi, 1e7, 1),
+        ("float_array", 0.5, 1e7, 1),
+        ("float_array", -0.5, 1e7, 1)
+    ), indirect=("float_array", ))
+    def test_unwrap_inexact(self, float_array, *, period, discont, axis):
+        out_arr = np.unwrap(
+            float_array, period=period, discont=discont, axis=axis
+        )
+        half_period = period / 2
+        if discont is None:
+            discont = half_period
+        implies = lambda cond1, cond2: (~cond1) | cond2
+        iff = lambda cond1, cond2: \
+            implies(cond1, cond2) & implies(cond2, cond1)
+        tol = 1e-6
+        slices = [slice(None, None)] * float_array.ndim
+        slices[axis] = slice(0, 1)
+        slices = tuple(slices)
+
+        assert_allclose(float_array[slices], out_arr[slices], atol=tol)
+        assert_allclose(
+            np.mod(float_array - out_arr + half_period, period),
+            half_period, atol=tol
+        )
+        assert_(np.all(implies(
+            np.abs(np.diff(float_array, axis=axis)) < discont - tol,
+            np.isclose(
+                np.diff(out_arr, axis=axis),
+                np.diff(float_array, axis=axis))
+        )))
+        assert_(np.all(implies(
+            np.abs(np.diff(float_array, axis=axis)) >= discont + tol,
+            np.abs(np.diff(out_arr, axis=axis)) <= abs(half_period) + tol
+        )))
+        relevant_inds = \
+            (np.mod(np.diff(float_array, axis=axis), period) == half_period) & \
+            (np.abs(np.diff(float_array, axis=axis)) >= discont + tol)
+        if period > 0:
+            assert_(np.all(iff(
+                np.diff(out_arr, axis=axis) > 0,
+                np.diff(float_array, axis=axis) > 0
+            ), where=relevant_inds))
+        else:
+            assert_(np.all(iff(
+                np.diff(out_arr, axis=axis) > 0,
+                np.diff(float_array, axis=axis) < 0
+            ), where=relevant_inds))
+
+    @pytest.mark.xfail(
+        reason="np.lib.unwrap doesn't handle big_int arrays well")
+    @pytest.mark.parametrize("big_int_array, period, discont, axis", (
+        ("big_int_array", 4, 7, 1),
+    ), indirect=("big_int_array", ))
+    def test_unwrap_big_int(self, big_int_array, *, period, discont, axis):
+        real_out_arr = np.unwrap(
+            big_int_array, period=period, discont=discont, axis=axis
+        )
+        helper_out_arr = np.unwrap(
+            big_int_array - big_int_array[0],
+            period=period, discont=discont, axis=axis
+        )
+        np.assert_allclose(real_out_arr - big_int_array[0], helper_out_arr)
 
 
 @pytest.mark.parametrize(
